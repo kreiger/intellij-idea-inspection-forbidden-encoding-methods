@@ -1,10 +1,7 @@
 package com.linuxgods.kreiger;
 
 import com.intellij.codeInspection.BaseJavaLocalInspectionTool;
-import com.intellij.codeInspection.LocalQuickFix;
-import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.codeInspection.ProblemsHolder;
-import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import org.jetbrains.annotations.NotNull;
 
@@ -17,19 +14,20 @@ import static com.linuxgods.kreiger.ForbiddenEncodingMethod.constructorsOf;
 
 public class ForbiddenEncodingMethodsInspection extends BaseJavaLocalInspectionTool {
 
-    public static final AddEncodingParameter ADD_STRING = new AddEncodingParameter("\"UTF-8\"");
-    public static final AddEncodingParameter ADD_CHARSET = new AddEncodingParameter("Charset.forName(\"UTF-8\")");
+    public static final AddEncodingParameter STRING = new AddEncodingParameter(String.class, "\"UTF-8\"");
+    public static final AddEncodingParameter CHARSET = new AddEncodingParameter(Charset.class, "Charset.forName(\"UTF-8\")");
 
     public static final ForbiddenEncodingMethod[] FORBIDDEN_ENCODING_METHODS = new ForbiddenEncodingMethod[]{
-            methodsOf(String.class).named("getBytes").withoutParameters().hasFix(ADD_CHARSET),
-            constructorsOf(String.class).withParameterTypes(byte[].class).hasFix(ADD_CHARSET),
+            methodsOf(String.class).named("getBytes").needParameter(CHARSET).needParameter(STRING),
+            constructorsOf(String.class).withParameterType(byte[].class).needParameter(CHARSET).needParameter(STRING),
             methodsOf(Charset.class).named("defaultCharset"),
             methodsOf(FileWriter.class),
-            constructorsOf(InputStreamReader.class).withParameterTypes(InputStream.class).hasFix(ADD_CHARSET),
-            constructorsOf(OutputStreamWriter.class).withParameterTypes(OutputStream.class).hasFix(ADD_CHARSET),
-            constructorsOf(PrintStream.class).whichDontThrow(UnsupportedEncodingException.class).hasFix(ADD_STRING),
-            constructorsOf(PrintWriter.class).whichDontThrow(UnsupportedEncodingException.class).hasFix(ADD_STRING),
-
+            constructorsOf(InputStreamReader.class).needParameter(CHARSET).needParameter(STRING),
+            constructorsOf(OutputStreamWriter.class).needParameter(CHARSET).needParameter(STRING),
+            constructorsOf(PrintStream.class).whichDontThrow(UnsupportedEncodingException.class).needParameter(STRING),
+            constructorsOf(PrintWriter.class)
+                    .exceptWithParameterType(Writer.class).whichDontThrow(UnsupportedEncodingException.class)
+                    .needParameter(STRING)
     };
 
     @NotNull
@@ -51,41 +49,11 @@ public class ForbiddenEncodingMethodsInspection extends BaseJavaLocalInspectionT
             for (ForbiddenEncodingMethod forbiddenEncodingMethod : FORBIDDEN_ENCODING_METHODS) {
                 if (forbiddenEncodingMethod.matches(expression)) {
                     holder.registerProblem(expression, "Method uses platform default encoding", GENERIC_ERROR_OR_WARNING, forbiddenEncodingMethod.getFixes());
+                    break;
                 }
             }
         }
 
-    }
-
-    private static class AddEncodingParameter implements LocalQuickFix {
-
-        private String text;
-
-        private AddEncodingParameter(String text) {
-            this.text = text;
-        }
-
-        @NotNull
-        @Override
-        public String getName() {
-            return "Fix call to method using platform default encoding";
-        }
-
-        @NotNull
-        @Override
-        public String getFamilyName() {
-            return "Fix call to method using platform default encoding";
-        }
-
-        @Override
-        public void applyFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
-            PsiCallExpression expression = (PsiCallExpression) descriptor.getPsiElement();
-            PsiExpressionList argumentList = expression.getArgumentList();
-            if (argumentList == null) {
-                return;
-            }
-            argumentList.add(JavaPsiFacade.getElementFactory(project).createExpressionFromText(text, expression));
-        }
     }
 
 }

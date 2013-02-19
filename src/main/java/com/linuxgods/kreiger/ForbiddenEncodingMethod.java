@@ -2,7 +2,6 @@ package com.linuxgods.kreiger;
 
 import com.intellij.codeInspection.LocalQuickFix;
 import com.intellij.psi.*;
-import org.jetbrains.annotations.NonNls;
 
 import java.util.ArrayList;
 import java.util.LinkedList;
@@ -15,42 +14,6 @@ class ForbiddenEncodingMethod {
     private List<Condition> conditions = new LinkedList<Condition>();
     private List<LocalQuickFix> fixes = new ArrayList<LocalQuickFix>();
 
-    private static boolean argumentsDiffer(PsiCall expression, Class[] parameterTypes) {
-        PsiExpressionList argumentList = expression.getArgumentList();
-        return null == argumentList || argumentsDiffer(argumentList, parameterTypes);
-    }
-
-    private static boolean argumentsDiffer(PsiExpressionList argumentList, Class[] parameterTypes) {
-        PsiType[] argumentTypes = argumentList.getExpressionTypes();
-        return argumentsDiffer(argumentTypes, parameterTypes);
-    }
-
-    private static boolean methodsDiffer(PsiMethod method, String methodName) {
-        if (null == method) {
-            return true;
-        }
-        @NonNls final String expressionMethodName =
-                method.getName();
-        return !methodName.equals(expressionMethodName);
-    }
-
-    private static boolean argumentsDiffer(PsiType[] argumentTypes, Class[] parameterTypes) {
-        if (argumentTypes.length != parameterTypes.length) {
-            return true;
-        }
-        for (int i = 0; i < argumentTypes.length; i++) {
-            PsiType argumentType = argumentTypes[i];
-            Class parameterType = parameterTypes[i];
-            if (null == argumentType) {
-                return true;
-            }
-            if (!isSubClassOrSameOf(argumentType, parameterType)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private static boolean isSubClassOrSameOf(PsiType argumentType, Class parameterType) {
         if (argumentType.getCanonicalText().equals(parameterType.getCanonicalName())) {
             return true;
@@ -62,32 +25,6 @@ class ForbiddenEncodingMethod {
             }
         }
         return false;
-    }
-
-    private static boolean isMethodOfClass(PsiCallExpression expression, Class<?> clazz) {
-        String clazzCanonicalName = clazz.getCanonicalName();
-        if (expression instanceof PsiMethodCallExpression) {
-            PsiMethodCallExpression methodCallExpression = (PsiMethodCallExpression) expression;
-            PsiExpression qualifierExpression = methodCallExpression.getMethodExpression().getQualifierExpression();
-            if (qualifierExpression == null) {
-                return false;
-            }
-            PsiType type = qualifierExpression.getType();
-            if (type != null) {
-                return clazz.getCanonicalName().equals(type.getCanonicalText());
-            }
-        }
-        PsiMethod method = expression.resolveMethod();
-        if (method == null) {
-            return false;
-        }
-        final PsiClass aClass = method.getContainingClass();
-        if (aClass == null) {
-            return false;
-        }
-        final String expressionClassName = aClass.getQualifiedName();
-        return expressionClassName != null && clazzCanonicalName.equals(expressionClassName);
-
     }
 
 
@@ -123,7 +60,7 @@ class ForbiddenEncodingMethod {
 
     public ForbiddenEncodingMethod withParameterTypes(final Class... parameterTypes) {
         return addCondition(new ParameterTypesCondition(parameterTypes));
-        
+
     }
 
     public ForbiddenEncodingMethod whichDontThrow(final Class<? extends Throwable> throwableClass) {
@@ -150,16 +87,78 @@ class ForbiddenEncodingMethod {
         return withParameterTypes();
     }
 
-    public ForbiddenEncodingMethod hasFix(LocalQuickFix fix) {
+    public ForbiddenEncodingMethod canBeFixedBy(LocalQuickFix fix) {
         this.fixes.add(fix);
         return this;
     }
 
+    public ForbiddenEncodingMethod exceptWithParameterType(final Class<?> parameterType) {
+        return addCondition(new NotCondition(new ParameterTypeCondition(parameterType)));
+    }
 
-    public static interface Condition {
+    public ForbiddenEncodingMethod withParameterType(final Class<byte[]> parameterType) {
+        return addCondition(new ParameterTypeCondition(parameterType));
+    }
 
+    public ForbiddenEncodingMethod needParameter(final AddEncodingParameter fix) {
+        return addCondition(new Condition() {
+            @Override
+            public boolean matches(PsiCallExpression expression) {
+                PsiMethod method = expression.resolveMethod();
+                if (null == method) {
+                    return true;
+                }
+                PsiParameterList parameterList = method.getParameterList();
+                if (parameterList.getParametersCount() >= 2) {
+                    boolean alreadyFixed = lastParameterIsOfType(parameterList, fix.getParameterType());
+                    if (alreadyFixed) {
+                        return false;
+                    }
+                }
+                PsiClass containingClass = method.getContainingClass();
+                if (containingClass == null) {
+                    return true;
+                }
+                PsiMethod[] methodsWithSameName = containingClass.findMethodsByName(method.getName(), false);
+                for (PsiMethod sameNameMethod : methodsWithSameName) {
+                    PsiParameterList sameNameParameterList = sameNameMethod.getParameterList();
+                    boolean sameNameMethodHasOneMoreParameter = parameterList.getParametersCount() + 1 == sameNameParameterList.getParametersCount();
+                    if (!sameNameMethodHasOneMoreParameter) {
+                        continue;
+                    }
+                    if (!isPrefixOf(parameterList, sameNameParameterList)) {
+                        continue;
+                    }
+                    if (lastParameterIsOfType(sameNameParameterList, fix.getParameterType())) {
+                        canBeFixedBy(fix);
+                        return true;
+                    }
+                }
+                return true;
+            }
+
+            private boolean lastParameterIsOfType(PsiParameterList parameterList, Class<?> parameterType) {
+                PsiParameter lastParameter = parameterList.getParameters()[parameterList.getParametersCount() - 1];
+                return isSubClassOrSameOf(lastParameter.getType(), parameterType);
+            }
+
+            private boolean isPrefixOf(PsiParameterList shorterParameterList, PsiParameterList longerParameterList) {
+                PsiParameter[] parameters = shorterParameterList.getParameters();
+                PsiParameter[] sameNameParameters = longerParameterList.getParameters();
+                for (int i = 0; i < parameters.length; i++) {
+                    PsiType parameter1Type = parameters[i].getType();
+                    PsiType parameter2Type = sameNameParameters[i].getType();
+                    if (!parameter1Type.equals(parameter2Type)) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+        });
+    }
+
+    private static interface Condition {
         public boolean matches(PsiCallExpression expression);
-
     }
 
     private static class ConstructorCondition implements Condition {
@@ -179,12 +178,32 @@ class ForbiddenEncodingMethod {
 
         @Override
         public boolean matches(PsiCallExpression expression) {
-            return !argumentsDiffer(expression, parameterTypes);
+            PsiExpressionList argumentList = expression.getArgumentList();
+            if (null == argumentList) {
+                return false;
+            }
+            PsiType[] argumentTypes = argumentList.getExpressionTypes();
+            if (argumentTypes.length != parameterTypes.length) {
+                return false;
+            }
+            Class[] parameterTypes = this.parameterTypes;
+            for (int i = 0; i < argumentTypes.length; i++) {
+                PsiType argumentType = argumentTypes[i];
+                Class parameterType = parameterTypes[i];
+                if (null == argumentType) {
+                    return false;
+                }
+                if (!isSubClassOrSameOf(argumentType, parameterType)) {
+                    return false;
+                }
+            }
+            return true;
         }
+
         @Override
 
         public String toString() {
-            return super.toString()+":"+asList(parameterTypes);
+            return super.toString() + ":" + asList(parameterTypes);
         }
 
     }
@@ -198,12 +217,13 @@ class ForbiddenEncodingMethod {
 
         @Override
         public boolean matches(PsiCallExpression expression) {
-            return !methodsDiffer(expression.resolveMethod(), methodName);
+            PsiMethod method = expression.resolveMethod();
+            return null != method && methodName.equals(method.getName());
         }
 
         @Override
         public String toString() {
-            return super.toString()+":"+methodName;
+            return super.toString() + ":" + methodName;
         }
     }
 
@@ -216,13 +236,71 @@ class ForbiddenEncodingMethod {
 
         @Override
         public boolean matches(PsiCallExpression expression) {
-            return isMethodOfClass(expression, clazz);
+            String clazzCanonicalName = clazz.getCanonicalName();
+            if (expression instanceof PsiMethodCallExpression) {
+                PsiMethodCallExpression methodCallExpression = (PsiMethodCallExpression) expression;
+                PsiExpression qualifierExpression = methodCallExpression.getMethodExpression().getQualifierExpression();
+                if (qualifierExpression == null) {
+                    return false;
+                }
+                PsiType type = qualifierExpression.getType();
+                if (type != null) {
+                    return clazz.getCanonicalName().equals(type.getCanonicalText());
+                }
+            }
+            PsiMethod method = expression.resolveMethod();
+            if (method == null) {
+                return false;
+            }
+            final PsiClass aClass = method.getContainingClass();
+            if (aClass == null) {
+                return false;
+            }
+            final String expressionClassName = aClass.getQualifiedName();
+            return expressionClassName != null && clazzCanonicalName.equals(expressionClassName);
+
         }
 
         @Override
         public String toString() {
-            return super.toString()+":"+clazz.getName();
+            return super.toString() + ":" + clazz.getName();
         }
 
+    }
+
+    private static class ParameterTypeCondition implements Condition {
+        private final Class<?> parameterType;
+
+        public ParameterTypeCondition(Class<?> parameterType) {
+            this.parameterType = parameterType;
+        }
+
+        @Override
+        public boolean matches(PsiCallExpression expression) {
+            PsiExpressionList argumentList = expression.getArgumentList();
+            if (null == argumentList) {
+                return false;
+            }
+            PsiType[] argumentTypes = argumentList.getExpressionTypes();
+            for (PsiType argumentType : argumentTypes) {
+                if (null != argumentType && isSubClassOrSameOf(argumentType, parameterType)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    private static class NotCondition implements Condition {
+        private final ParameterTypeCondition condition;
+
+        public NotCondition(ParameterTypeCondition condition) {
+            this.condition = condition;
+        }
+
+        @Override
+        public boolean matches(PsiCallExpression expression) {
+            return !condition.matches(expression);
+        }
     }
 }
