@@ -1,4 +1,4 @@
-package com.linuxgods.kreiger;
+package com.linuxgods.kreiger.idea.inspections.encoding;
 
 import com.intellij.codeInspection.LocalQuickFix;
 import com.intellij.codeInspection.ProblemDescriptor;
@@ -8,7 +8,7 @@ import com.intellij.psi.PsiCallExpression;
 import com.intellij.psi.PsiExpressionList;
 import org.jetbrains.annotations.NotNull;
 
-class AddEncodingParameter implements LocalQuickFix {
+public class AddEncodingParameter implements LocalQuickFix {
 
     private String text;
     private Class<?> parameterType;
