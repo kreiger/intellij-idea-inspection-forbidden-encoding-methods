@@ -65,6 +65,7 @@ class ForbiddenEncodingMethod {
     }
 
     private static boolean isMethodOfClass(PsiCallExpression expression, Class<?> clazz) {
+        String clazzCanonicalName = clazz.getCanonicalName();
         if (expression instanceof PsiMethodCallExpression) {
             PsiMethodCallExpression methodCallExpression = (PsiMethodCallExpression) expression;
             PsiExpression qualifierExpression = methodCallExpression.getMethodExpression().getQualifierExpression();
@@ -72,7 +73,9 @@ class ForbiddenEncodingMethod {
                 return false;
             }
             PsiType type = qualifierExpression.getType();
-            return type != null && clazz.getCanonicalName().equals(type.getCanonicalText());
+            if (type != null) {
+                return clazz.getCanonicalName().equals(type.getCanonicalText());
+            }
         }
         PsiMethod method = expression.resolveMethod();
         if (method == null) {
@@ -83,7 +86,7 @@ class ForbiddenEncodingMethod {
             return false;
         }
         final String expressionClassName = aClass.getQualifiedName();
-        return expressionClassName != null && clazz.getCanonicalName().equals(expressionClassName);
+        return expressionClassName != null && clazzCanonicalName.equals(expressionClassName);
 
     }
 
