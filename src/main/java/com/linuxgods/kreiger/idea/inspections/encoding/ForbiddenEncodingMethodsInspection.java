@@ -30,6 +30,11 @@ public class ForbiddenEncodingMethodsInspection extends BaseJavaLocalInspectionT
                     .needParameter(STRING)
     };
 
+    @Override
+    public boolean isEnabledByDefault() {
+        return true;
+    }
+
     @NotNull
     @Override
     public PsiElementVisitor buildVisitor(@NotNull ProblemsHolder holder, boolean isOnTheFly) {
